@@ -5,6 +5,12 @@ package Device::SDS011;
 # Author:       Irakliy Sunguryan ( www.sochi-travel.info )
 # Date Created: September 14, 2019
 
+##############################################################################
+# NOTE 1: All functions will save the Device ID, as all commands return it.
+#         But no function accepts it as I don't see any use in it: even the data query 
+#         command returns only returns one Device ID for both PM25 and PM10 sensors.
+##############################################################################
+
 use strict;
 use warnings;
 use feature 'say';
@@ -44,7 +50,13 @@ use constant {
     CMD_REPLY => "\xC5",
     MODE_SLEEP => 0,
     MODE_WORK  => 1,
-    REQ_TEMPLATE => [0xAA,0xB4,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF,0xFF,0x00,0xAB],
+    REQ_TEMPLATE => [
+        0xAA,0xB4,0x00,      # header, command, instruction
+        0x00,0x00,0x00,0x00, # data
+        0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,
+        0xFF,0xFF,0x00,0xAB, # device id, checksum, tail
+    ],
     #---
     CMD_BYTE_REPORTING_MODE => 2,
     CMD_BYTE_QUERY_DATA => 4,
@@ -83,10 +95,7 @@ sub new {
     $self->{port}->parity('none');
     $self->{port}->stopbits(1);
     
-    # $self->{port}->binary;
     $self->{port}->write_settings || undef $self->{port};
-    
-    # $self->{port}->are_match(MSG_TAIL);
     
     bless $self, $class;
     return $self;
@@ -95,20 +104,6 @@ sub new {
 sub _checksum {
     my @data_bytes = @_;
     return sum(@data_bytes) % 256;
-}
-
-sub _write_serial {
-    my $self = shift;
-    my $bytes = shift;
-    my $str = pack('C*', @$bytes); # ."\015";
-        # say "Writing: ".hex_print_str($str);
-    $self->{port}->lookclear;
-    my $count_out = $self->{port}->write($str);
-    # $self->{port}->write_drain;
-        # say "count_out = $count_out";
-        warn "write failed\n"      unless  $count_out;
-        warn "write incomplete\n"  if  $count_out != length($str);
-    return $count_out;
 }
 
 sub _read_serial {
@@ -140,6 +135,34 @@ sub _read_serial {
     return $msg;
 }
 
+sub _write_serial {
+    my $self = shift;
+    my $bytes = shift;
+    my $str = pack('C*', @$bytes);
+        # say "Writing: ".hex_print_str($str);
+    $self->{port}->lookclear;
+    my $count_out = $self->{port}->write($str);
+    # $self->{port}->write_drain;
+        # say "count_out = $count_out";
+        warn "write failed\n"      unless  $count_out;
+        warn "write incomplete\n"  if  $count_out != length($str);
+    return $count_out;
+}
+
+# ACCEPTS: (1) [required] array ref of 15 data bytes (intergers)
+#          (2) [optional] flag of whether to expect \xC0 reply (sensor data), 
+#                         which is only for data query command
+# RETURNS: a response (string of bytes)
+sub _write_msg {
+    my $self = shift;
+    my ($data,$expect_sensor_data) = @_;
+    my @out = @{REQ_TEMPLATE()};
+    $out[$_+2] = $data->[$_] for 0..14;
+    $out[17] = _checksum(@out[2..16]);
+    $self->_write_serial(\@out);
+    return $self->_read_serial(($expect_sensor_data ? undef : CMD_REPLY));
+}
+
 sub _update_device_id {
     my $self = shift;
     my $msg = shift; # full response message
@@ -152,78 +175,89 @@ sub _update_device_id {
 
 # ---------------------------------------------------------------------------
 
-sub reporting_mode {
-    my $self = shift;
-    my ($mode, $minutes) = @_;
-    return 0;
-}
-
+##############################################################################
+# RETURNS: Array ref of calculated sensor values: [PM25, PM10]
+##############################################################################
 sub live_data {
     my $self = shift;
-    my $response = $self->_read_serial();
-    return $response;
+    my $response = $self->_read_serial;
+    my @values = map { ord } split //, $response;
+    return [
+        (($values[3] * 256) + $values[2]) / 10,
+        (($values[5] * 256) + $values[4]) / 10,
+    ];
 }
 
 sub query_data {
     my $self = shift;
-    my $sensor_id = shift;
-    return 0;
-}
-
-sub device_id {
-    my $self = shift;
-    my $id = shift;
-    return 0;
+    my @out = @{REQ_TEMPLATE()}[2..16];
+    my $response = $self->_write_msg([CMD_BYTE_QUERY_DATA, @{REQ_TEMPLATE()}[3..16]], 1);
+        # say "Read: ".hex_print_str($response) if $response;
+    $self->_update_device_id($response);
+    my @values = map { ord } split //, $response;
+    return [
+        (($values[3] * 256) + $values[2]) / 10,
+        (($values[5] * 256) + $values[4]) / 10,
+    ];
 }
 
 ##############################################################################
-# ACCEPTS: Mode: 0=Sleep, 1=Work
-# RETURNS: Current mode
-# NOTE: This will also set the Device ID, as it's is also returned from the device,
-#       but the function will not return it.
+# ACCEPTS: OPTIONAL Mode to set: 0=Report active mode, 1=Report query mode
+# RETURNS: Current reporting mode
+# TODO: reporting_mode(), sensor_mode(), working_period() are pretty much the same -- combine them?
 ##############################################################################
-sub sensor_mode {
+sub reporting_mode {
     my $self = shift;
     my $mode = shift;
-    say $mode if defined $mode;
-    my @out = @{REQ_TEMPLATE()};
-    $out[2] = CMD_BYTE_SLEEP_WORK;
-    if (defined $mode) {
-        $out[3] = 1; # 0=query, 1=set
-        $out[4] = $mode;
-    } else {
-        $out[3] = 0;
-    }
-    $out[17] = _checksum(@out[2..16]);
-    $self->_write_serial(\@out);
-    my $response = $self->_read_serial(CMD_REPLY);
+    my @out = @{REQ_TEMPLATE()}[2..16];
+    $out[0] = CMD_BYTE_REPORTING_MODE;
+    ($out[1], $out[2]) = defined($mode) ? (1,$mode) : (0,0);
+    my $response = $self->_write_msg(\@out);
         # say "Read: ".hex_print_str($response) if $response;
     $self->_update_device_id($response);
     return ord(substr($response,4,1));
 }
 
 ##############################################################################
+# ACCEPTS: OPTIONAL Mode to set: 0=Sleep, 1=Work
+# RETURNS: Current mode
+##############################################################################
+sub sensor_mode {
+    my $self = shift;
+    my $mode = shift;
+    my @out = @{REQ_TEMPLATE()}[2..16];
+    $out[0] = CMD_BYTE_SLEEP_WORK;
+    ($out[1], $out[2]) = defined($mode) ? (1,$mode) : (0,0);
+    my $response = $self->_write_msg(\@out);
+        # say "Read: ".hex_print_str($response) if $response;
+    $self->_update_device_id($response);
+    return ord(substr($response,4,1));
+}
+
+##############################################################################
+# ACCEPTS: OPTIONAL Mode/Period in minutes to set: 0=continuous mode, 1-30 minutes (work 30 seconds and sleep n*60-30 seconds)
+# RETURNS: Current mode/Period in minutes
 ##############################################################################
 sub working_period {
     my $self = shift;
     my $minutes = shift;
-    return 0;
+    # say "Minutes: ".hex_print_str(pack('C*',($minutes)));
+    my @out = @{REQ_TEMPLATE()}[2..16];
+    $out[0] = CMD_BYTE_WORKING_PERIOD;
+    ($out[1], $out[2]) = defined($minutes) ? (1,$minutes) : (0,0);
+    my $response = $self->_write_msg(\@out);
+    $self->_update_device_id($response);
+    return ord(substr($response,4,1));
 }
 
 ##############################################################################
 # RETURNS: Array ref [year, month, day] of the firmware version
-# NOTE 1: This will only read the value from the device if it wasn't read before
-# NOTE 2: This will also set the Device ID, as it's is also returned from the device,
-#         but the function will not return it.
+# NOTE: This will only read the value from the device if it wasn't read before
 ##############################################################################
 sub firmware {
     my $self = shift;
     if (!$self->{_firmware_verion}) {
-        my @out = @{REQ_TEMPLATE()};
-        $out[2] = CMD_BYTE_FIRMWARE;
-        $out[17] = _checksum(@out[2..16]);
-        $self->_write_serial(\@out);
-        my $response = $self->_read_serial(CMD_REPLY);
+        my $response = $self->_write_msg([CMD_BYTE_FIRMWARE, @{REQ_TEMPLATE()}[3..16]]);
         if (defined $response) {
             my @version = map { ord } split //, substr($response,3,3);
                 # Firmware version byte 1: year
@@ -238,6 +272,23 @@ sub firmware {
     # TODO: question: if it was successfully read on previous call 
     # and the $self->{_firmware_verion} is set, should I undef it in case this read fails?
     return $self->{_firmware_verion};
+}
+
+sub device_id {
+    my $self = shift;
+    my @new_id = @_; # 2 bytes (integers)
+    if (@new_id) {
+        my @out = @{REQ_TEMPLATE()}[2..16];
+        $out[0] = CMD_BYTE_DEVICE_ID;
+        ($out[11], $out[12]) = @new_id;
+        my $response = $self->_write_msg(\@out);
+        $self->_update_device_id($response);
+    }
+    else {
+        # (ab)use reporing mode to read the ID, as I don't see a ID query command
+        $self->reporting_mode if (!$self->{_device_id});
+    }
+    return $self->{_device_id};
 }
 
 1;
