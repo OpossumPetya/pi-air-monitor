@@ -86,7 +86,7 @@ sub _checksum {
 
 sub _read_serial {
     my $self = shift;
-    my $cmdChar = shift; # C0 - sensor data; C5 - reply
+    my $cmdChar = shift; # C0 - sensor data; C5 - command reply
     my $msg = '';
     my $readMessages = 0;
     $self->{port}->lookclear;
@@ -100,7 +100,7 @@ sub _read_serial {
                 && substr($msg,-1)  eq "\xAB")
             {
                 $readMessages++;
-                last unless $cmdChar;
+                last if $cmdChar eq CMD_DATA;
                 last if $readMessages >= MAX_MSGS_READ; # give up after this many messages
                 last if $cmdChar && substr($msg,1,1) eq $cmdChar;
             }
@@ -123,17 +123,17 @@ sub _write_serial {
 }
 
 # ACCEPTS: (1) [required] array ref of 15 data bytes (intergers)
-#          (2) [optional] flag of whether to expect \xC0 reply (sensor data), 
-#                         which is only for data query command
+#          (2) [optional] expected response type: \xC0 (sensor data), or
+#                         \xC5 (command reply) <- default
 # RETURNS: a response (string of bytes)
 sub _write_msg {
     my $self = shift;
-    my ($data, $expect_sensor_data) = @_;
+    my ($data, $response_type) = @_;
     my @out = @{REQ_TEMPLATE()};
     $out[$_+2] = $data->[$_] for 0..14;
     $out[17] = _checksum(@out[2..16]);
     $self->_write_serial(\@out);
-    return $self->_read_serial(($expect_sensor_data ? undef : CMD_REPLY));
+    return $self->_read_serial(($response_type // CMD_REPLY));
 }
 
 sub _update_device_id {
@@ -152,7 +152,7 @@ sub _update_device_id {
 ##############################################################################
 sub live_data {
     my $self = shift;
-    my $response = $self->_read_serial;
+    my $response = $self->_read_serial(CMD_DATA);
     my @values = map { ord } split //, $response;
     return [
         (($values[3] * 256) + $values[2]) / 10,
@@ -163,7 +163,7 @@ sub live_data {
 sub query_data {
     my $self = shift;
     my @out = @{REQ_TEMPLATE()}[2..16];
-    my $response = $self->_write_msg([CMD_BYTE_QUERY_DATA, @{REQ_TEMPLATE()}[3..16]], 1);
+    my $response = $self->_write_msg([CMD_BYTE_QUERY_DATA, @{REQ_TEMPLATE()}[3..16]], CMD_DATA);
     $self->_update_device_id($response);
     my @values = map { ord } split //, $response;
     return [
