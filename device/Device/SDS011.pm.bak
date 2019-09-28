@@ -61,7 +61,6 @@ sub new {
     };
 
     $self->{port} = Device::SerialPort->new($serial_port);
-    $self->{port}->read_const_time(10_000); # 10 seconds timeout
 
     # The UART communication protocol：
     #  bit rate：   9600
@@ -178,7 +177,7 @@ sub _change_mode {
     my ($mode_type, $mode_value) = @_;
     my @out = @{REQ_TEMPLATE()}[2..16];
     $out[0] = $mode_type;
-        # CMD_BYTE_REPORTING_MODE / CMD_BYTE_SLEEP_WORK / CMD_BYTE_WORKING_PERIOD
+        # CMD_BYTE_REPORTING_MODE, CMD_BYTE_SLEEP_WORK, CMD_BYTE_WORKING_PERIOD
     ($out[1], $out[2]) = defined($mode_value) ? (1,$mode_value) : (0,0);
     my $response = $self->_write_msg(\@out);
     $self->_update_device_id($response) if $response;
