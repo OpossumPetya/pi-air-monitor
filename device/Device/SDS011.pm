@@ -312,7 +312,7 @@ I<SDS011 uses the principle of laser scattering in the
 air, can be obtained from 0.3 to 10 microns suspended
 particulate matter concentration.>
 
-This module allows to retrieve PM 2.5 mass in mg/m3 and PM 10 mass in mg/m3 
+This module allows retrieving PM 2.5 mass in mg/m3 and PM 10 mass in mg/m3 
 sensor readings.
  
 =head1 CONSTRUCTOR
@@ -320,7 +320,8 @@ sensor readings.
 =head2 Device::SDS011->new( $usb_device )
  
 Creates and returns a new C<Device::SDS011> object, open specified port, 
-and configure it according to the protocol: I<9600 bps with 8 data bit, no parity, one stop bit>.
+and configure it according to the protocol: 
+I<9600 bps with 8 data bit, no parity, one stop bit>.
 
 The C<$usb_device> option is passed on to C<Device::SerialPort> (please see documentation for this module).
  
@@ -330,15 +331,22 @@ The C<$usb_device> option is passed on to C<Device::SerialPort> (please see docu
 =head1 METHODS
  
 =head2 $sensor-E<gt>live_data
- 
-description...
+
+Returns current PM readings as an arrayref C<[PM 2.5, PM 10]>.
+
+Ex.: C<[8.77,17.73]>
+
+By default the sensor device works in Active reporting mode with 
+Continuous working period, which means it reports PM readings 
+every 1 second continuously. This method can be used to read the values.
 
 
 =head2 $sensor-E<gt>query_data
- 
-description...
 
+Requests sensor data.
+Returns current PM readings as an arrayref C<[PM 2.5, PM 10]>.
 
+Also see the C<reporting_mode()> method.
 
 =head2 $sensor-E<gt>reporting_mode
 
@@ -347,8 +355,12 @@ This comment is here to shut the podchecker up.
 
 =head2 $sensor-E<gt>reporting_mode( $mode )
  
-description...
+Sets report mode. Valid values: C<0> (active) and C<1> (query).
+When parameter value is not specified it returns current reporting mode (C<0> or C<1>).
 
+I<* Report B<active mode> Sensor automatically reports a measurement data in a work period.>
+
+I<* Report B<query mode> Sensor received query data command to report a measurement data.>
 
 
 =head2 $sensor-E<gt>sensor_mode
@@ -358,8 +370,14 @@ This comment is here to shut the podchecker up.
 
 =head2 $sensor-E<gt>sensor_mode( $mode )
  
-description...
+Sets sensor mode. Valid values: C<0> (sleep) and C<1> (work).
+When parameter value is not specified it returns current sensor mode (C<0> or C<1>).
 
+I<"Service life is the key parameter of laser dust sensor. 
+The laser diode in this sensor has high quality and its service life 
+is up to 8000 hours. If you don't need real-time data 
+(such as filter, air quality monitoring, etc.), you can use 
+the discontinuous working method to prolong the service life.">
 
 
 =head2 $sensor-E<gt>working_period
@@ -369,7 +387,9 @@ This comment is here to shut the podchecker up.
 
 =head2 $sensor-E<gt>working_period( $mode )
  
-description...
+Sets working period. Valid values: C<0> (continuous), 
+and C<1-30> minute(s) -- work 30 seconds, and sleep n*60-30 seconds.
+When parameter value is not specified it returns current working period.
 
 
 =head2 $sensor-E<gt>firmware
@@ -385,12 +405,12 @@ C<YY-MM-DD> (year, month, date).
     say join ' ', map { sprintf '%02x', $_ } @{$sensor->device_id};
     my $newID = $sensor->device_id( 0xD0, 0xEA ); # returns [0xD0,0xEA]
 
-Set Device ID. Returns new device ID -- array reference two two ID bytes.
+Sets Device ID. Returns new device ID -- arrayref to two ID bytes.
 When no ID specified returns current device ID.
 
-I<NOTE: All methods will save/update (internally) the Device ID, 
-sice all commands return it.  If this command is called first, 
-it will (ab)use reporting_mode() method to get it.>
+I<NOTE: All methods of this module will save/update (internally) the Device ID, 
+since all commands return it.  If this command is called first, 
+it will (ab)use reporting_mode() method to get the ID.>
 
 =head2 $sensor-E<gt>done
  
@@ -402,7 +422,7 @@ Destroys the C<Device::SerialPort> object. Re-connect is not possible.
  
 Irakliy Sunguryan
  
- 
+
  
 =head1 DEVELOPMENT & ISSUES
  
