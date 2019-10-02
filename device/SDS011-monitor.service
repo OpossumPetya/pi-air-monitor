@@ -1,0 +1,28 @@
+# 1. As root, give the user permission to run services when they're not logged in:
+#    sudo loginctl enable-linger pi
+#
+# 2. sudo cp SDS011-monitor.service /etc/systemd/system/SDS011-monitor.service
+
+# Manually start/stop the service:
+#     sudo systemctl start SDS011-monitor.service
+#     sudo systemctl stop SDS011-monitor.service
+
+# To set up the service to start at boot / disable it:
+#     sudo systemctl enable SDS011-monitor.service
+#     sudo systemctl disable SDS011-monitor.service
+
+[Unit]
+Description=PM Monitor
+After=network.target
+
+[Service]
+User=pi
+Group=pi
+ExecStart=/usr/bin/perl SDS011-monitor.pl
+WorkingDirectory=/home/pi/test
+StandardOutput=append:/home/pi/test/output/std-out.log
+StandardError=append:/home/pi/test/output/std-err.log
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
