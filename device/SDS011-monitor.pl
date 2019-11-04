@@ -72,9 +72,12 @@ while (1) {
         = (DateTime->now(time_zone => 'local'), (temp_humid()), undef, undef);
     LOG("loop: DT:[$dt], TEMP:[$temp] HUMID:[$humidity]");
     if ( $humidity < 70) {
-        LOG("lets wake up...");
+        LOG("lets wake up - try 1...");
         $sensor->sensor_mode(1); # wake up
         sleep 10;                # warming up...
+        LOG("lets wake up - try 2...");
+        $sensor->sensor_mode(1);
+        sleep 10;
         LOG("get a few data readings...");
         for (1..AVG_OF) {
             my ($p25_tmp,$p10_tmp) = @{$sensor->query_data};

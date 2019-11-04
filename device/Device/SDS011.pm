@@ -131,7 +131,7 @@ sub _write_msg {
     my $self = shift;
     my ($data, $response_type) = @_;
     my @out = @{REQ_TEMPLATE()};
-    $out[$_+2] = $data->[$_] for 0..14;
+    @out[2..16] = @$data;
     $out[17] = _checksum(@out[2..16]);
     $self->_write_serial(\@out);
     return $self->_read_serial(($response_type // CMD_REPLY));
