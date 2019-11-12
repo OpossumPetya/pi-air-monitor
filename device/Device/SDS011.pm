@@ -1,13 +1,13 @@
 package Device::SDS011;
 
-# Last updated September 25, 2019
+# Last updated November 10, 2019
 #
 # Author:       Irakliy Sunguryan ( www.sochi-travel.info )
 # Date Created: September 25, 2019
 
 ##############################################################################
 # NOTE 1: All functions will save/update the Device ID, 
-#         sice all commands return it anyway.
+#         since all commands return it anyway.
 ##############################################################################
 
 use v5.10; # for "Defined OR" operator
@@ -90,10 +90,11 @@ sub _read_serial {
     my $cmdChar = shift; # C0 - sensor data; C5 - command reply
     my $msg = '';
     my $readMessages = 0;
+    my $failures = 0; # a way to stop the infinite loop in case read() will start to time out
     $self->{port}->lookclear;
     while(1) {
         my $byte = $self->{port}->read(1);
-        if ($byte) {
+        if ( defined $byte and length $byte ) {
             $msg .= $byte;
             $msg = substr($msg,-10);
             if (length($msg) == 10 
@@ -105,6 +106,9 @@ sub _read_serial {
                 last if $readMessages >= MAX_MSGS_READ; # give up after this many messages
                 last if $cmdChar && substr($msg,1,1) eq $cmdChar;
             }
+        } else {
+            $failures++;
+            last if $failures == 5;
         }
     }
     $msg = undef  if $cmdChar && substr($msg,1,1) ne $cmdChar;
@@ -165,12 +169,16 @@ sub query_data {
     my $self = shift;
     my @out = @{REQ_TEMPLATE()}[2..16];
     my $response = $self->_write_msg([CMD_BYTE_QUERY_DATA, @{REQ_TEMPLATE()}[3..16]], CMD_DATA);
-    $self->_update_device_id($response);
-    my @values = map { ord } split //, $response;
-    return [
-        (($values[3] * 256) + $values[2]) / 10,
-        (($values[5] * 256) + $values[4]) / 10,
-    ];
+    if ($response) {
+        $self->_update_device_id($response);
+        my @values = map { ord } split //, $response;
+        return [
+            (($values[3] * 256) + $values[2]) / 10,
+            (($values[5] * 256) + $values[4]) / 10,
+        ];
+    } else {
+        return undef;
+    }
 }
 
 sub _change_mode {
