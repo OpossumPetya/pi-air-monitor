@@ -20,7 +20,7 @@ $| = 1;
     - if humidity < 70%
     -   wake up: sensor_mode = 1/Work
     -   wait 10 seconds to warm up
-    -   read values / get avergave of 3-5 readings
+    -   read values / get average of 3-5 readings
     -   send values
     - else if humidity > 90%
     -   send warning to the creator: datetime, humidity, 
@@ -28,6 +28,9 @@ $| = 1;
     - sleep: sensor_mode = 0/Sleep,
     - wait 30 minutes
 '; # -------------------------------------------------------------------------
+
+$SIG{__WARN__} = sub { warn sprintf("[%s] ", scalar localtime), @_ };
+$SIG{__DIE__}  = sub { die  sprintf("[%s] ", scalar localtime), @_ };
 
 use constant {
     AVG_OF => 3,
@@ -88,7 +91,7 @@ while (1) {
         }
         $pm25 = sprintf("%.2f", $pm25/AVG_OF);
         $pm10 = sprintf("%.2f", $pm10/AVG_OF);
-        LOG("here are my final values: PM25:$pm25, PM10:$pm10");
+        LOG("here are my final values: PM25:[$pm25], PM10:[$pm10]");
         save_data($dt, $temp, $humidity, $pm25, $pm10);
         $sensor->sensor_mode(0); # go to sleep;
     }
