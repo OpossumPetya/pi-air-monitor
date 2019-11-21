@@ -325,7 +325,7 @@ sensor readings.
  
 =head1 CONSTRUCTOR
  
-=head2 Device::SDS011->new( $usb_device )
+=head2 Device::SDS011-E<gt>new( $usb_device )
  
 Creates and returns a new C<Device::SDS011> object, open specified port, 
 and configure it according to the protocol: 
@@ -407,6 +407,8 @@ C<YY-MM-DD> (year, month, date).
 
 =head2 $sensor-E<gt>device_id
 
+=for comment
+This comment is here to shut the podchecker up.
 
 =head2 $sensor-E<gt>device_id( $id_byte_1, $id_byte_2 )
 
